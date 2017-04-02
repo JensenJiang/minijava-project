@@ -33,7 +33,7 @@ abstract class NodeEntry extends SymbolTableEntry{
 class ObjectEntry extends NodeEntry{
     String classname;
     ClassEntry class_pointer;
-    Boolean isvalid;
+    boolean isvalid;
     public ObjectEntry(String name, ScopeEntry parent, String classname){
         super(name, Type.OBJECT, parent);
         this.classname = classname;

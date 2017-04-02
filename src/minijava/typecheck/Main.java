@@ -17,7 +17,7 @@ import java.io.FileNotFoundException;
 public class Main {
     public static void main(String[] args){
         try{
-            MiniJavaParser parser = new MiniJavaParser(new FileInputStream("samples/Test.java"));
+            MiniJavaParser parser = new MiniJavaParser(new FileInputStream("samples/typecheck/TreeVisitor-error.java"));
             Node goal = parser.Goal();
 
             SymbolTable table = new SymbolTable();

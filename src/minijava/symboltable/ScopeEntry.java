@@ -75,6 +75,7 @@ class ClassEntry extends ScopeEntry{
     void resolve_method_object(Hashtable<String, SymbolTableEntry> global_table){
         for(SymbolTableEntry entry : this.table.values()){
             if(entry instanceof MethodEntry) ((MethodEntry)entry).resolve_object_class(global_table);
+            else if(entry instanceof ObjectEntry) ((ObjectEntry) entry).resolve_class(global_table);
         }
     }
     boolean same_subclass_of(ClassEntry c){

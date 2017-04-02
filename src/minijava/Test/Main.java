@@ -16,7 +16,7 @@ public class Main {
 		table = new HashMap();
 
 		try {
-			MiniJavaParser parser = new MiniJavaParser(new FileInputStream("samples/Test.java"));
+			MiniJavaParser parser = new MiniJavaParser(new FileInputStream("samples/typecheck/BinaryTree-error"));
 			Node goal = parser.Goal();
 
 			TableBuilder builder = new TableBuilder(table);
