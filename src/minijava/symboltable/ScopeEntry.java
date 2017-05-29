@@ -1,4 +1,5 @@
 package minijava.symboltable;
+import java.lang.reflect.Method;
 import java.util.Hashtable;
 import java.util.ArrayList;
 import java.util.Map;
@@ -38,6 +39,8 @@ class GlobalEntry extends ScopeEntry{
 class ClassEntry extends ScopeEntry{
     String extends_classname;   // Used to resolve extends_class in-table. If empty string is given, it means it doesn't have a base class.
     ClassEntry extends_class;
+    ArrayList<NodeEntry> VTable;
+    ArrayList<MethodEntry> DTable;
     public ClassEntry(String name, ScopeEntry parent, String extends_name){
         super(name, Type.CLASS, parent);
         this.extends_classname = extends_name;
@@ -56,10 +59,12 @@ class ClassEntry extends ScopeEntry{
                             System.out.printf("Overrided Method %s in Class %s: %s is wanted but %s is given.\n", this_method.identifier.name, this.identifier.name, parent_method.return_type.identifier.type.realname(), this_method.return_type.identifier.type.realname());
                         }
                         /* Return Type is Object */
-                        else if(this_method.return_type instanceof ObjectEntry){
-                            if(!((ObjectEntry)this_method.return_type).same_subclass_of((ObjectEntry)parent_method.return_type)){
-                                System.out.printf("Overrided Method %s in Class %s: %s is not identical to or a subclass of %s.\n", this_method.identifier.name, this.identifier.name, ((ObjectEntry) this_method.return_type).classname, ((ObjectEntry) parent_method.return_type).classname);
-                            }
+                        else if(this_method.return_type instanceof ObjectEntry && !((ObjectEntry)this_method.return_type).same_subclass_of((ObjectEntry)parent_method.return_type)){
+                            System.out.printf("Overrided Method %s in Class %s: %s is not identical to or a subclass of %s.\n", this_method.identifier.name, this.identifier.name, ((ObjectEntry) this_method.return_type).classname, ((ObjectEntry) parent_method.return_type).classname);
+                        }
+                        else{
+                            /* Successfully overrided */
+                            this_method.is_overrided = true;
                         }
                     }
                     /* Overload */
@@ -86,6 +91,8 @@ class ClassEntry extends ScopeEntry{
 }
 
 class MethodEntry extends ScopeEntry{
+    boolean is_overrided = false;
+    int table_index = -1;    // DTable index
     NodeEntry return_type;  // store a NodeEntry Token */
     ArrayList<NodeEntry> param_list;
     public MethodEntry(String name, ScopeEntry parent, NodeEntry return_type){

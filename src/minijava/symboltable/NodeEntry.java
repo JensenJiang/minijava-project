@@ -6,6 +6,7 @@ import java.util.Hashtable;
  * Created by jensen on 2017/3/24.
  */
 abstract class NodeEntry extends SymbolTableEntry{
+    int table_index = -1;    // VTable index, only for NodeEntry whose parent_scope is a Class
     public NodeEntry(String name, Type type, ScopeEntry parent){
         super(new IdentifierPair(name, type), parent);
         // System.out.printf("Variable Define: %s\n", this);

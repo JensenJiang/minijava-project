@@ -4,6 +4,7 @@ import minijava.syntaxtree.Identifier;
 import minijava.visitor.DepthFirstVisitor;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Map;
 
@@ -124,6 +125,73 @@ public class SymbolTable extends TableTravese{
         }
     }
     /* in-table check section ends */
+    public void build_vd_tables_all(){
+        visit = new Hashtable<String, Boolean>();
+        this.global_entry.table.forEach((id, entry) -> visit.put(id, false));
+        this.global_entry.table.forEach((id, entry) -> build_vd_tables(id, (ClassEntry)entry));
+    }
+
+    /* build VTable and DTable section starts */
+    void build_vd_tables(String id, ClassEntry entry){
+        if(!this.visit.get(id)){
+            this.visit.put(id, true);
+            entry.VTable = new ArrayList<>();
+            entry.DTable = new ArrayList<>();
+            if(entry.extends_class != null){
+                this.build_vd_tables(entry.extends_class.identifier.namecode, entry.extends_class);
+                entry.VTable.addAll(entry.extends_class.VTable);
+                entry.DTable.addAll(entry.extends_class.DTable);
+            }
+
+            for(Map.Entry<String, SymbolTableEntry> i : entry.table.entrySet()){
+                /* Node, VTable */
+                if(i.getValue() instanceof NodeEntry){
+                    NodeEntry cur_entry = (NodeEntry)i.getValue();
+                    if(cur_entry.table_index == -1){
+                        cur_entry.table_index = entry.VTable.size();
+                        entry.VTable.add(cur_entry);
+                    }
+                }
+                /* Method, DTable */
+                else if(i.getValue() instanceof MethodEntry){
+                    MethodEntry cur_entry = (MethodEntry)i.getValue();
+                    if(cur_entry.table_index == -1){
+                        /* Overrided */
+                        if(cur_entry.is_overrided){
+                            int index = ((MethodEntry)entry.extends_class.table.get(i.getKey())).table_index;
+                            entry.DTable.set(index, cur_entry);
+                            cur_entry.table_index = index;
+                        }
+                        else{
+                            cur_entry.table_index = entry.DTable.size();
+                            entry.DTable.add(cur_entry);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public void print_vd_tables(){
+        for(Map.Entry<String, SymbolTableEntry> i : this.global_entry.table.entrySet()){
+            ClassEntry cur_entry = (ClassEntry)i.getValue();
+            System.out.println("In " + i.getKey() + ":");
+            /* VTable */
+            System.out.println("******VTable******");
+            for(NodeEntry j : cur_entry.VTable){
+                System.out.printf("%s from %s\n", j.identifier.name, j.parent_scope.identifier.name);
+            }
+
+            /* DTable */
+            System.out.println("******DTable******");
+            for(MethodEntry j : cur_entry.DTable){
+                System.out.printf("%s from %s\n", j.identifier.name, j.parent_scope.identifier.name);
+            }
+
+            System.out.println("");
+        }
+    }
+    /* build VTable and DTable section ends */
 
     /**
      * f0 -> "class"
