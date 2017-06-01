@@ -7,6 +7,7 @@ import java.util.Hashtable;
  */
 abstract class NodeEntry extends SymbolTableEntry{
     int table_index = -1;    // VTable index, only for NodeEntry whose parent_scope is a Class
+    int temp_index = -1;    // TEMP Variable index, only for local variables
     public NodeEntry(String name, Type type, ScopeEntry parent){
         super(new IdentifierPair(name, type), parent);
         // System.out.printf("Variable Define: %s\n", this);

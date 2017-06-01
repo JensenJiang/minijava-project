@@ -41,6 +41,7 @@ class ClassEntry extends ScopeEntry{
     ClassEntry extends_class;
     ArrayList<NodeEntry> VTable;
     ArrayList<MethodEntry> DTable;
+    int DTable_list_id;
     public ClassEntry(String name, ScopeEntry parent, String extends_name){
         super(name, Type.CLASS, parent);
         this.extends_classname = extends_name;
@@ -154,5 +155,8 @@ class MethodEntry extends ScopeEntry{
     }
     public void add_param(NodeEntry param){
         this.param_list.add(param);
+    }
+    public String get_piglet_name(){
+        return this.parent_scope.identifier.name + "_" + this.identifier.name;
     }
 }
