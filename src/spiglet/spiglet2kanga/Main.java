@@ -1,5 +1,7 @@
 package spiglet.spiglet2kanga;
 
+import javafx.util.Pair;
+
 /**
  * Created by jensen on 2017/6/3.
  */
