@@ -4,14 +4,15 @@ import spiglet.syntaxtree.*;
 import spiglet.visitor.DepthFirstVisitor;
 import sun.jvm.hotspot.utilities.Interval;
 
+import java.rmi.registry.Registry;
 import java.util.*;
 
 /**
  * Created by jensen on 2017/6/4.
  */
 public class LinearScanner extends DepthFirstVisitor {
-    public static String[] regs = {"t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9", "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "a0", "a1", "a2", "a3", "v0", "v1"};
-    public static int MAX_GENERAL_REGS_NUM = 18;
+    public static String[] regs = {"t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9", "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "v0", "v1", "a0", "a1", "a2", "a3"};
+    public static int MAX_GENERAL_REGS_NUM = 16;
     BasicBlock _cur_block;      // For both construction stage and running stage
     Hashtable<Integer, Integer> temp_stack_id;
     Hashtable<Integer, BasicBlock> entry_stmt_block;
@@ -38,11 +39,27 @@ public class LinearScanner extends DepthFirstVisitor {
         return ret;
     }
 
+    void release_all_temp_reg(KangaBuilder.KangaFragment kf) {
+        this._cur_block._release_all_temp_reg(kf);
+    }
+
+    Pair<Boolean, Integer> get_location(int temp_id) {
+        return this._cur_block._get_location(temp_id);
+    }
+    void register_allocation(int cur_stmt_num, KangaBuilder.KangaFragment kf) {
+        this._cur_block._register_allocation(cur_stmt_num, kf);
+    }
+
+    int get_reg(int temp_id, KangaBuilder.KangaFragment kf) {
+        return this._cur_block._get_reg(temp_id, kf);
+    }
+
     /* state helper */
     public void enter_block(int stmt_num) {
         BasicBlock _to_enter = this.entry_stmt_block.get(stmt_num);
         assert(_to_enter != null);
         this._cur_block = _to_enter;
+        this._cur_block.running_stage_init();
     }
 
 
@@ -52,6 +69,8 @@ public class LinearScanner extends DepthFirstVisitor {
         Hashtable<Integer, Integer> _temp2reg;
         ArrayList<IntervalPair> _intervals;
         ArrayList<Integer> _avail_regs;
+        LinkedList<Integer> _avail_temp_regs;
+        LinkedList<Pair<Integer, Integer>> _reg2temp;  // only for temp register
         PriorityQueue<IntervalPair> active_list;
 
         BasicBlock(int _start) {
@@ -59,6 +78,11 @@ public class LinearScanner extends DepthFirstVisitor {
             entry_stmt_block.put(this.stmt_num, this);
             this._temp_cur_interval = new Hashtable<>();
             this._intervals = new ArrayList<>();
+            this._temp2reg = new Hashtable<>();
+            this._reg2temp = new LinkedList<>();
+            this.active_list = new PriorityQueue<>(IntervalPair.RightComparator);
+            this._avail_regs = new ArrayList<>();
+            this._avail_temp_regs = new LinkedList<>();
         }
 
         int allocate_stmt_num() {
@@ -66,11 +90,60 @@ public class LinearScanner extends DepthFirstVisitor {
             return this.stmt_num - 1;
         }
 
+        Pair<Boolean, Integer> _get_location(int temp_id) {  // in stack or in register
+            Integer reg_id = this._temp2reg.get(temp_id);
+            if(reg_id == null) {
+                int stack_id = get_stack_id(temp_id);
+                return new Pair<>(false, stack_id);
+            }
+            else return new Pair<>(true, reg_id);
+        }
+
+        int _get_reg(int temp_id, KangaBuilder.KangaFragment kf) {
+            Pair<Boolean, Integer> loc = this._get_location(temp_id);
+            if(loc.get_first()) return loc.second;
+            else {
+                if(!this._avail_temp_regs.isEmpty()) {
+                    int reg_id = this._avail_temp_regs.pollFirst();
+                    this._temp2reg.put(temp_id, reg_id);
+                    this._reg2temp.add(new Pair<>(reg_id, temp_id));
+                    return reg_id;
+                }
+                else {
+                    int reg_id = this._release_first_reg(kf);
+                    this._temp2reg.put(temp_id, reg_id);
+                    this._reg2temp.add(new Pair<>(reg_id, temp_id));
+                    kf.write_aload(reg_id, loc.second);
+                    return reg_id;
+                }
+            }
+        }
+
+        int _release_first_reg(KangaBuilder.KangaFragment kf) {
+            Pair<Integer, Integer> pair = this._reg2temp.pollFirst();
+            assert(pair != null);
+            int reg_id = pair.get_first();
+            this._temp2reg.remove(pair.second);
+            kf.write_astore(temp_stack_id.get(pair.second), reg_id);
+            return reg_id;
+        }
+
+        void _release_all_temp_reg(KangaBuilder.KangaFragment kf) {
+            for(Pair<Integer, Integer> e : this._reg2temp) {
+                this._temp2reg.remove(e.get_second());
+                this._avail_temp_regs.add(e.get_first());
+                kf.write_astore(temp_stack_id.get(e.get_second()), e.get_first());
+            }
+            this._reg2temp.clear();
+        }
+
         public void running_stage_init() {
             this._intervals.sort(IntervalPair.LeftComparator);
-            this.active_list = new PriorityQueue<>(IntervalPair.RightComparator);
-            this._avail_regs = new ArrayList<>();
+
             for(int i = 0;i < MAX_GENERAL_REGS_NUM;i++) this._avail_regs.add(i);
+            this._avail_temp_regs.add(16);
+            this._avail_temp_regs.add(17);
+            this._avail_temp_regs.add(19);
         }
 
         void remove_outdated(int cur_stmt_num, KangaBuilder.KangaFragment kf) { // pass the maximum stmt_num + 1 to this method, it would clean out all the regsiters
@@ -83,6 +156,7 @@ public class LinearScanner extends DepthFirstVisitor {
                     assert(reg_id != null);
                     kf.write_astore(get_stack_id(e.temp_id), reg_id);
                     _avail_regs.add(reg_id);
+
                 }
             }
             for(IntervalPair e : to_remove) {
@@ -90,7 +164,8 @@ public class LinearScanner extends DepthFirstVisitor {
             }
         }
 
-        public void register_allocation(int cur_stmt_num, KangaBuilder.KangaFragment kf) {
+
+        void _register_allocation(int cur_stmt_num, KangaBuilder.KangaFragment kf) {
             boolean has_clean = false;
             while(!this._intervals.isEmpty() && this._intervals.get(0).get_first() <= cur_stmt_num) {
                 if(!has_clean) {
@@ -105,8 +180,19 @@ public class LinearScanner extends DepthFirstVisitor {
                     kf.write_aload(reg_id, get_stack_id(cur_interval.temp_id));
                 }
                 else {
-                    // TODO: when there is no available register!
-                    hahaha
+                    IntervalPair first = this.active_list.peek();
+                    if(first.get_second() > cur_interval.get_second()) {
+                        /* recycle */
+                        Integer reg_id = this._temp2reg.remove(first.temp_id);
+                        assert(reg_id != null);
+                        kf.write_astore(get_stack_id(first.temp_id), reg_id);
+                        active_list.remove(first);
+
+                        /* add new */
+                        this._temp2reg.put(cur_interval.temp_id, reg_id);
+                        active_list.add(cur_interval);
+                        // do not need to aload from stack. (1) it may not have space in stack (2) it should be written in new data immediately
+                    }
                 }
             }
         }
@@ -240,27 +326,28 @@ public class LinearScanner extends DepthFirstVisitor {
 
     /* Visitor Section starts */
     public void visit(NodeListOptional n) {
-        if ( n.present() )
+        if ( n.present() ) {
+            int _count = 0;
             for (Enumeration<Node> e = n.elements(); e.hasMoreElements(); ) {
                 Node next = e.nextElement();
-                if(next instanceof NodeSequence) {
-                    for(Node ele : ((NodeSequence)next).nodes) {
-                        if(ele instanceof Label) {
+                if (next instanceof NodeSequence) {
+                    for (Node ele : ((NodeSequence) next).nodes) {
+                        if (ele instanceof Label) {
                             BasicBlock _new_block = new BasicBlock(this._cur_block.stmt_num);
                             this._cur_block = _new_block;
                             ele.accept(this._cur_block);
-                        }
-                        else if(ele instanceof CJumpStmt || ele instanceof JumpStmt) {
+                        } else if (ele instanceof CJumpStmt || ele instanceof JumpStmt) {
                             ele.accept(this._cur_block);
                             BasicBlock _new_block = new BasicBlock(this._cur_block.stmt_num);
                             this._cur_block = _new_block;
-                        }
-                        else {
+                        } else {
                             ele.accept(this._cur_block);
                         }
                     }
                 }
+                _count++;
             }
+        }
     }
     /* Visitor Section ends */
 
@@ -304,4 +391,16 @@ class IntervalPair extends Pair<Integer, Integer> {
             return b.second.compareTo(a.second);
         }
     };
+}
+
+class Register {
+    int reg_id;
+    boolean is_dirty;
+    Register(int _reg) {
+        this.is_dirty = false;
+        this.reg_id = _reg;
+    }
+    void set_dirty() {
+        this.is_dirty = true;
+    }
 }
