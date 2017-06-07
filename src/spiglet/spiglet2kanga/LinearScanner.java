@@ -16,18 +16,43 @@ public class LinearScanner extends DepthFirstVisitor {
     BasicBlock _cur_block;      // For both construction stage and running stage
     Hashtable<Integer, Integer> temp_stack_id;
     Hashtable<Integer, BasicBlock> entry_stmt_block;
+    LinkedHashSet<Integer> used_regs;
     int global_stack_id;
+    int max_call_argu = 0;
+    int argu_num;
+    int backup_start, backup_end;
 
-    public LinearScanner(int _stack_start_id) {
-        this.global_stack_id = _stack_start_id;
+    public LinearScanner(int _argu_num) {
+        this.argu_num = _argu_num;
+        this.global_stack_id = Integer.max(this.argu_num, 4) - 4;
         this.temp_stack_id = new Hashtable<>();
         this.entry_stmt_block = new Hashtable<>();
         this._cur_block = new BasicBlock(0);
+        this.used_regs = new LinkedHashSet<>();
     }
 
     int allocate_stack_id() {
         this.global_stack_id ++;
         return this.global_stack_id - 1;
+    }
+
+    void save_registers(KangaBuilder.KangaFragment kf) {
+        this.backup_start = this.global_stack_id;
+        for(Integer i : this.used_regs) {
+            kf.write_astore(this.allocate_stack_id(), i);
+        }
+    }
+
+    void restore_registers(KangaBuilder.KangaFragment kf) {
+        int stack_id = this.backup_start;
+        for(Integer i : this.used_regs) {       // the iteration order should be the same!!
+            kf.write_aload(i, stack_id);
+            stack_id ++;
+        }
+    }
+
+    void update_max_argu(int argu_num) {
+        this.max_call_argu = Integer.max(this.max_call_argu, argu_num);
     }
 
     int get_stack_id(int temp_id) {
@@ -177,6 +202,7 @@ public class LinearScanner extends DepthFirstVisitor {
                 if(!this._avail_regs.isEmpty()) {
                     int reg_id = this._avail_regs.remove(0);
                     _temp2reg.put(cur_interval.temp_id, reg_id);
+                    used_regs.add(reg_id);
                     kf.write_aload(reg_id, get_stack_id(cur_interval.temp_id));
                 }
                 else {

@@ -32,9 +32,11 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
     public class KangaFragment {
         StringBuilder kanga;
         String exp;
+        int list_ele_num;   // only for arguments optional list
 
         KangaFragment() {
             this.kanga = new StringBuilder();
+            this.list_ele_num = 0;
         }
 
         KangaFragment append(KangaFragment kf) {
@@ -61,13 +63,11 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
             this.append(label + "\n");
         }
 
-        void write_main_begin() {
-            this.write_label("MAIN");
-            inc_indent();
+        void write_begin(String label, int a, int b, int c) {
+            this.write_label(label + " " + "[" + Integer.toString(a) + "][" + Integer.toString(b) + "][" + Integer.toString(c) + "]");
         }
 
-        void write_main_end() {
-            dec_indent();
+        void write_end() {
             this.write_label("END");
         }
 
@@ -192,15 +192,23 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         this._cur_scanner = new LinearScanner(0);
 
         n.f0.accept(this);
-        kf.write_main_begin();
+        this.inc_indent();
         this.reset_stmt_num();
 
         n.f1.accept(this._cur_scanner);   // Build flow graph and compute live intervals.
-        n.f1.accept(this);
+        KangaFragment kf_sub1 = n.f1.accept(this);
 
         n.f2.accept(this);
-        kf.write_main_end();
-        n.f3.accept(this);
+        this.dec_indent();
+
+        kf.write_begin("MAIN", 0, this._cur_scanner.global_stack_id, this._cur_scanner.max_call_argu);
+        kf.append(kf_sub1);
+        kf.write_end();
+        kf.append("\n");
+
+        KangaFragment kf_sub2 = n.f3.accept(this);
+        kf.append(kf_sub2);
+
         n.f4.accept(this);
         return kf;
     }
@@ -259,10 +267,78 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
                         kf.write_passarg(_count - 3, next_kf.exp);
                     }
                 }
+                else if(next instanceof Procedure) {
+                    next_kf = next.accept(this);
+                    kf.append(next_kf);
+                }
 
                 _count++;
             }
+            kf.list_ele_num = _count;
         }
+        return kf;
+    }
+
+    /**
+     * f0 -> Label()
+     * f1 -> "["
+     * f2 -> IntegerLiteral()
+     * f3 -> "]"
+     * f4 -> StmtExp()
+     */
+    public KangaFragment visit(Procedure n) {
+        KangaFragment kf = new KangaFragment();
+        n.f0.accept(this);
+        n.f1.accept(this);
+        n.f2.accept(this);
+        n.f3.accept(this);
+        int argu_num = Integer.parseInt(n.f2.f0.tokenImage);
+        this._cur_scanner = new LinearScanner(argu_num);
+        KangaFragment kf_sub = n.f4.accept(this);
+        kf.write_begin(n.f0.f0.tokenImage, argu_num, this._cur_scanner.global_stack_id + this._cur_scanner.used_regs.size(), this._cur_scanner.max_call_argu);
+        kf.append(kf_sub);
+
+        return kf;
+    }
+
+    /**
+     * f0 -> "BEGIN"
+     * f1 -> StmtList()
+     * f2 -> "RETURN"
+     * f3 -> SimpleExp()
+     * f4 -> "END"
+     */
+    public KangaFragment visit(StmtExp n) {
+        KangaFragment kf = new KangaFragment();
+        this.inc_indent();
+        n.f0.accept(this);
+        /* arguments processing */
+        for(int i = 4;i < Integer.max(4, this._cur_scanner.argu_num);i++) {
+            this._cur_scanner.temp_stack_id.put(i, i - 4);
+        }
+        for(int i = 0;i < Integer.min(4, this._cur_scanner.argu_num);i++) {
+            int stack_id = this._cur_scanner.allocate_stack_id();
+            kf.write_astore(stack_id, i + 20);
+            this._cur_scanner.temp_stack_id.put(i, stack_id);
+        }
+
+        this.reset_stmt_num();
+        n.f1.accept(this._cur_scanner);
+        KangaFragment kf_sub1 = n.f1.accept(this);
+        n.f2.accept(this);
+        KangaFragment kf_sub2 = n.f3.accept(this);
+
+        n.f4.accept(this);
+
+
+        this._cur_scanner.save_registers(kf);
+        kf.append(kf_sub1);
+        kf.append(kf_sub2);
+        kf.write_move(REG(18), kf_sub2.exp);
+        this._cur_scanner.restore_registers(kf);
+        this.dec_indent();
+        kf.write_end();
+        kf.append("\n");
         return kf;
     }
 
@@ -504,14 +580,17 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         KangaFragment kf = new KangaFragment();
         n.f0.accept(this);
         n.f2.accept(this);
+        this._cur_scanner.release_all_temp_reg(kf);         // backup temp registers
         KangaFragment kf_sub2 = n.f3.accept(this);
         KangaFragment kf_sub1 = n.f1.accept(this);      // avoid SimpleExp get flushed into stack by arguments.
         n.f4.accept(this);
 
         kf.append(kf_sub2);
         kf.append(kf_sub1);
+
         kf.write_call(kf_sub1.exp);
         kf.exp = REG(18);   // v0
+        this._cur_scanner.update_max_argu(kf_sub2.list_ele_num);
 
         return kf;
     }
