@@ -132,6 +132,7 @@ public class LinearScanner extends DepthFirstVisitor {
                     int reg_id = this._avail_temp_regs.pollFirst();
                     this._temp2reg.put(temp_id, reg_id);
                     this._reg2temp.add(new Pair<>(reg_id, temp_id));
+                    kf.write_aload(reg_id, loc.second);
                     return reg_id;
                 }
                 else {
@@ -189,6 +190,16 @@ public class LinearScanner extends DepthFirstVisitor {
             }
         }
 
+        void remove_all(KangaBuilder.KangaFragment kf) {
+            for(IntervalPair e : active_list) {
+                /* recycle the register */
+                Integer reg_id = this._temp2reg.remove(e.temp_id);
+                assert(reg_id != null);
+                kf.write_astore(get_stack_id(e.temp_id), reg_id);
+                _avail_regs.add(reg_id);
+            }
+        }
+
 
         void _register_allocation(int cur_stmt_num, KangaBuilder.KangaFragment kf) {
             boolean has_clean = false;
@@ -203,6 +214,7 @@ public class LinearScanner extends DepthFirstVisitor {
                     int reg_id = this._avail_regs.remove(0);
                     _temp2reg.put(cur_interval.temp_id, reg_id);
                     used_regs.add(reg_id);
+                    active_list.add(cur_interval);
                     kf.write_aload(reg_id, get_stack_id(cur_interval.temp_id));
                 }
                 else {
@@ -358,16 +370,20 @@ public class LinearScanner extends DepthFirstVisitor {
                 Node next = e.nextElement();
                 if (next instanceof NodeSequence) {
                     for (Node ele : ((NodeSequence) next).nodes) {
-                        if (ele instanceof Label) {
+                        if (ele instanceof NodeOptional && ((NodeOptional) ele).present()) {
                             BasicBlock _new_block = new BasicBlock(this._cur_block.stmt_num);
                             this._cur_block = _new_block;
                             ele.accept(this._cur_block);
-                        } else if (ele instanceof CJumpStmt || ele instanceof JumpStmt) {
-                            ele.accept(this._cur_block);
-                            BasicBlock _new_block = new BasicBlock(this._cur_block.stmt_num);
-                            this._cur_block = _new_block;
-                        } else {
-                            ele.accept(this._cur_block);
+                        }
+                        else if(ele instanceof Stmt){
+                            Node stmt_ele = ((Stmt) ele).f0.choice;
+                            if (stmt_ele instanceof CJumpStmt || stmt_ele instanceof JumpStmt) {
+                                ele.accept(this._cur_block);
+                                BasicBlock _new_block = new BasicBlock(this._cur_block.stmt_num);
+                                this._cur_block = _new_block;
+                            } else {
+                                ele.accept(this._cur_block);
+                            }
                         }
                     }
                 }
