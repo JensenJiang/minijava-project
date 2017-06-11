@@ -5,6 +5,7 @@ import spiglet.syntaxtree.*;
 import spiglet.visitor.GJNoArguDepthFirst;
 
 import java.util.Enumeration;
+import java.util.LinkedList;
 
 /**
  * Created by jensen on 2017/6/4.
@@ -32,11 +33,13 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
     public class KangaFragment {
         StringBuilder kanga;
         String exp;
+        LinkedList<Register> regs;
         int list_ele_num;   // only for arguments optional list
 
         KangaFragment() {
             this.kanga = new StringBuilder();
             this.list_ele_num = 0;
+            this.regs = new LinkedList<>();
         }
 
         KangaFragment append(KangaFragment kf) {
@@ -95,27 +98,6 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
             this.write_indent();
             this.append("ERROR\n");
         }
-        /*
-        String write_prepare_first(int temp_id) {
-            Pair<Boolean, Integer> ret = _cur_scanner.get_location(temp_id);
-            int id = ret.get_second();
-            if(!ret.get_first()) {
-                this.write_aload(18, id);
-                return REG(18);
-            }
-            else return REG(id);
-        }
-
-        String write_prepare_second(int temp_id) {
-            Pair<Boolean, Integer> ret = _cur_scanner.get_location(temp_id);
-            int id = ret.get_second();
-            if(!ret.get_first()) {
-                this.write_aload(19, id);
-                return REG(19);
-            }
-            else return REG(id);
-        }
-        */
 
         void write_cjump(String reg, String label) {
             this.write_indent();
@@ -160,7 +142,7 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
     }
 
     static String REG(int reg_id) {
-        return LinearScanner.regs[reg_id];
+        return LinearScanner.regs_name[reg_id];
     }
 
     static String BINOP(String op, String reg, String simexp) {
@@ -230,25 +212,24 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
             for (Enumeration<Node> e = n.elements(); e.hasMoreElements(); ) {
                 Node next = e.nextElement();
                 KangaFragment next_kf;
+                /* StmtList */
                 if(next instanceof NodeSequence) {
                     int cur_stmt_num = this.allocate_stmt_num();
                     for(Node ele : ((NodeSequence) next).nodes) {
+                        /* Label */
                         if(ele instanceof NodeOptional && ((NodeOptional) ele).present()) {
-                            // this._cur_scanner.register_allocation(cur_stmt_num, kf);
-                            this._cur_scanner._cur_block.remove_all(kf);
-                            this._cur_scanner.release_all_temp_reg(kf);
+                            this._cur_scanner.write_back_all_regs(kf);
                             this._cur_scanner.enter_block(cur_stmt_num);
                             kf.write_label(ele.accept(this).exp);
                         }
                         else if(ele instanceof Stmt){
                             Node stmt_ele = ((Stmt) ele).f0.choice;
+                            /* CJumpStmt or JumpStmt */
                             if(stmt_ele instanceof CJumpStmt || stmt_ele instanceof JumpStmt) {
                                 this._cur_scanner.register_allocation(cur_stmt_num, kf);
                                 next_kf = ele.accept(this);
-                                // this._cur_scanner.register_allocation(cur_stmt_num + 1, kf);   // force all the registers stored in stack
-                                this._cur_scanner._cur_block.remove_all(kf);
-                                this._cur_scanner.release_all_temp_reg(kf);
-                                kf.append(next_kf);
+                                this._cur_scanner.write_back_all_regs(kf);
+                                kf.append(next_kf);     // should not proceed write_back_all_regs()!!!
                                 this._cur_scanner.enter_block(cur_stmt_num + 1);
                             }
                             else {
@@ -257,21 +238,31 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
                             }
                         }
                     }
+                    // if(!e.hasMoreElements()) this._cur_scanner.write_back_all_regs(kf);
                 }
+                /* Temp */
                 else if(next instanceof Temp) {
+                    int temp_id = Integer.parseInt(((Temp) next).f1.f0.tokenImage);
                     if(_count < 4) {
-                        Pair<Boolean, Integer> loc = this._cur_scanner.get_location(Integer.parseInt(((Temp) next).f1.f0.tokenImage));
-                        if(loc.get_first()) {
-                            kf.write_move(REG(20 + _count), REG(loc.get_second()));
+                        Integer reg_id = this._cur_scanner.temp_reg_id.get(temp_id);
+                        /* has Regsiter */
+                        if(reg_id != null) {
+                            this._cur_scanner.load_to_reg(reg_id, kf);
+                            kf.write_move(REG(20 + _count), REG(reg_id));
                         }
                         else {
-                            kf.write_aload(20 + _count, loc.get_second());
-                        }
+                            Integer stack_id = this._cur_scanner.temp_stack_id.get(temp_id);
+                            assert stack_id != null : "It hasn't been allocated stack!";
+                            kf.write_aload(20 + _count, stack_id);
+                         }
                     }
                     else {
                         next_kf = next.accept(this);
                         kf.append(next_kf);
+                        Register next_reg = next_kf.regs.poll();
+                        this._cur_scanner.load_to_reg(next_reg.reg_id, kf);
                         kf.write_passarg(_count - 3, next_kf.exp);
+                        next_reg.set_unlocked();
                     }
                 }
                 else if(next instanceof Procedure) {
@@ -303,7 +294,7 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         this._cur_scanner = new LinearScanner(argu_num);
         n.f4.accept(this._cur_scanner);
         KangaFragment kf_sub = n.f4.accept(this);
-        kf.write_begin(n.f0.f0.tokenImage, argu_num, this._cur_scanner.global_stack_id + this._cur_scanner.used_regs.size(), this._cur_scanner.max_call_argu);
+        kf.write_begin(n.f0.f0.tokenImage, argu_num, this._cur_scanner.global_stack_id, this._cur_scanner.max_call_argu);
         kf.append(kf_sub);
 
         return kf;
@@ -342,6 +333,9 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         this._cur_scanner.save_registers(kf);
         kf.append(kf_sub1);
         kf.append(kf_sub2);
+        if(!kf_sub2.regs.isEmpty()) {
+            this._cur_scanner.load_to_reg(kf_sub2.regs.peek().reg_id, kf);
+        }
         kf.write_move(REG(18), kf_sub2.exp);
         this._cur_scanner.restore_registers(kf);
         this.dec_indent();
@@ -398,8 +392,12 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         KangaFragment kf_sub2 = n.f2.accept(this);
 
         kf.append(kf_sub1);
+        Register sub1_reg = kf_sub1.regs.poll();
+        this._cur_scanner.load_to_reg(sub1_reg.reg_id, kf);
         kf.append(kf_sub2);
+
         kf.write_cjump(kf_sub1.exp, kf_sub2.exp);
+        sub1_reg.set_unlocked();
         return kf;
     }
 
@@ -429,8 +427,15 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         KangaFragment kf_sub2 = n.f3.accept(this);
 
         kf.append(kf_sub1);
+        Register sub1_reg = kf_sub1.regs.poll();
+        this._cur_scanner.load_to_reg(sub1_reg.reg_id, kf);
+
         kf.append(kf_sub2);
+        Register sub2_reg = kf_sub2.regs.poll();
+        this._cur_scanner.load_to_reg(sub2_reg.reg_id, kf);
         kf.write_hstore(kf_sub1.exp, n.f2.f0.tokenImage, kf_sub2.exp);
+        sub1_reg.set_unlocked();
+        sub2_reg.set_unlocked();
         return kf;
     }
 
@@ -448,8 +453,15 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         n.f3.accept(this);
 
         kf.append(kf_sub1);
+        Register sub1_reg = kf_sub1.regs.poll();
+
         kf.append(kf_sub2);
+        Register sub2_reg = kf_sub2.regs.poll();
+        this._cur_scanner.load_to_reg(sub2_reg.reg_id, kf);
         kf.write_hload(kf_sub1.exp, kf_sub2.exp, n.f3.f0.tokenImage);
+        sub1_reg.set_write();
+        sub1_reg.set_unlocked();
+        sub2_reg.set_unlocked();
         return kf;
     }
 
@@ -465,8 +477,25 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         KangaFragment kf_sub2 = n.f2.accept(this);
 
         kf.append(kf_sub1);
+        Register sub1_reg = kf_sub1.regs.poll();
+
         kf.append(kf_sub2);
+        /* if Exp() is TEMP or BinOP */
+        if(!kf_sub2.regs.isEmpty()) {
+            for(Register reg : kf_sub2.regs) {
+                this._cur_scanner.load_to_reg(reg.reg_id, kf);
+            }
+        }
         kf.write_move(kf_sub1.exp, kf_sub2.exp);
+
+        sub1_reg.set_write();
+        sub1_reg.set_unlocked();
+        /* if Exp() is TEMP or BinOP */
+        if(!kf_sub2.regs.isEmpty()) {
+            for(Register reg : kf_sub2.regs) {
+                reg.set_unlocked();
+            }
+        }
         return kf;
     }
 
@@ -480,8 +509,15 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         KangaFragment kf_sub = n.f1.accept(this);
 
         kf.append(kf_sub);
+        /* if SimpleExp() is TEMP */
+        if(!kf_sub.regs.isEmpty()) {
+            this._cur_scanner.load_to_reg(kf_sub.regs.peek().reg_id, kf);
+        }
         kf.write_print(kf_sub.exp);
 
+        if(!kf_sub.regs.isEmpty()) {
+            kf_sub.regs.poll().set_unlocked();
+        }
         return kf;
     }
 
@@ -525,7 +561,10 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         n.f0.accept(this);
         n.f1.accept(this);
         int temp_id = Integer.parseInt(n.f1.f0.tokenImage);
-        kf.exp = REG(this._cur_scanner.get_reg(temp_id, kf));
+        Register reg = this._cur_scanner.force_get_reg(temp_id, kf);
+        reg.set_locked();
+        kf.exp = REG(reg.reg_id);
+        kf.regs.add(reg);
         return kf;
     }
 
@@ -553,7 +592,11 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         KangaFragment kf_sub2 = n.f2.accept(this);
 
         kf.append(kf_sub1);
+        kf.regs.add(kf_sub1.regs.poll());
         kf.append(kf_sub2);
+        if(!kf_sub2.regs.isEmpty()) {
+            kf.regs.add(kf_sub2.regs.poll());
+        }
 
         String op;
         switch(n.f0.f0.which){
@@ -589,6 +632,9 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
         KangaFragment kf_sub = n.f1.accept(this);
 
         kf.append(kf_sub);
+        if(!kf_sub.regs.isEmpty()) {
+            kf.regs.add(kf_sub.regs.poll());
+        }
         kf.exp = HALLOCATE(kf_sub.exp);
 
         return kf;
@@ -604,14 +650,22 @@ public class KangaBuilder extends GJNoArguDepthFirst<KangaBuilder.KangaFragment>
     public KangaFragment visit(Call n) {
         KangaFragment kf = new KangaFragment();
         n.f0.accept(this);
+        KangaFragment kf_sub1 = n.f1.accept(this);
         n.f2.accept(this);
-        this._cur_scanner.release_all_temp_reg(kf);         // backup temp registers
         KangaFragment kf_sub2 = n.f3.accept(this);
-        KangaFragment kf_sub1 = n.f1.accept(this);      // avoid SimpleExp get flushed into stack by arguments.
         n.f4.accept(this);
 
-        kf.append(kf_sub2);
         kf.append(kf_sub1);
+        if(!kf_sub1.regs.isEmpty()) {
+            this._cur_scanner.load_to_reg(kf_sub1.regs.peek().reg_id, kf);
+        }
+
+        kf.append(kf_sub2);
+
+        if(!kf_sub1.regs.isEmpty()) {
+            kf_sub1.regs.poll().set_unlocked();
+        }
+        this._cur_scanner.write_back_temp_regs(kf);         // backup temp registers
 
         kf.write_call(kf_sub1.exp);
         kf.exp = REG(18);   // v0

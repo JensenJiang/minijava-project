@@ -4,6 +4,8 @@ import spiglet.ParseException;
 import spiglet.syntaxtree.Node;
 import spiglet.SpigletParser;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.InputStreamReader;
 
 /**
@@ -12,6 +14,7 @@ import java.io.InputStreamReader;
 public class Main {
     public static void main(String args[]) {
         try{
+            // SpigletParser parser = new SpigletParser(new FileInputStream("samples/spiglet/TreeVisitor.spg"));
             SpigletParser parser = new SpigletParser(new InputStreamReader(System.in));
             Node goal = parser.Goal();
             KangaBuilder kgbuilder = new KangaBuilder();
@@ -21,5 +24,10 @@ public class Main {
         catch(ParseException e){
             System.out.println(e);
         }
+        /*
+        catch(FileNotFoundException e){
+            System.out.println(e);
+        }
+        */
     }
 }
