@@ -15,8 +15,8 @@ import java.io.InputStreamReader;
 public class Main {
     public static void main(String args[]) {
         try{
-            KangaParser parser = new KangaParser(new FileInputStream("samples/kanga/TreeVisitor.kg"));
-            // KangaParser parser = new KangaParser(new InputStreamReader(System.in));
+            // KangaParser parser = new KangaParser(new FileInputStream("samples/kanga/TreeVisitor.kg"));
+            KangaParser parser = new KangaParser(new InputStreamReader(System.in));
             Node goal = parser.Goal();
             MIPSBuilder mbuilder = new MIPSBuilder();
             MIPSBuilder.MIPSFragment mf = goal.accept(mbuilder);
@@ -25,10 +25,10 @@ public class Main {
         catch(ParseException e){
             System.out.println(e);
         }
-
+        /*
         catch(FileNotFoundException e){
             System.out.println(e);
         }
-
+        */
     }
 }
