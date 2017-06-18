@@ -66,6 +66,17 @@ public class PigletBuilder extends GJNoArguDepthFirst<PigletBuilder.PigletFragme
             return ret_temp;
         }
 
+        int write_allocate_DTable_array(String size) {
+            int ret_temp = 0;
+
+            this.write_indent();
+            this.append(PigletBuilder.this.MOVE(ret_temp, PigletBuilder.this.HALLOCATE(PigletBuilder.this.BINOP('+', size, "1"))));
+
+            this.write_indent();
+            this.append(PigletBuilder.this.HSTORE(TEMP(ret_temp), 0, size));
+            return ret_temp;
+        }
+
         void write_begin_part(){
             this.append("\n");
             this.write_indent();
@@ -89,10 +100,12 @@ public class PigletBuilder extends GJNoArguDepthFirst<PigletBuilder.PigletFragme
 
         void allocate_DTable_mem(){
             int DTable_num = PigletBuilder.global_entry.table.size() - 1;
+            /*
             this.write_label("INIT");
             this.write_indent();
             this.append(NOOP());
-            int DTable_temp = this.write_allocate_array(Integer.toString(DTable_num));
+            */
+            int DTable_temp = this.write_allocate_DTable_array(Integer.toString(DTable_num));
             PigletBuilder.this.global_DTable_temp = DTable_temp;
             int temp_v = PigletBuilder.this.allocate_temp();
             /* Write to mem */
@@ -115,7 +128,7 @@ public class PigletBuilder extends GJNoArguDepthFirst<PigletBuilder.PigletFragme
 
         void write_allocate_local(MethodEntry entry){
             for(int i = 0;i < entry.param_list.size();i++){
-                entry.param_list.get(i).temp_index = i + 1;
+                entry.param_list.get(i).temp_index = i + 2;     //!
             }
             for(SymbolTableEntry param : entry.table.values()){
                 if(((NodeEntry)param).temp_index < 0) ((NodeEntry)param).temp_index = PigletBuilder.this.allocate_temp();
@@ -361,9 +374,11 @@ public class PigletBuilder extends GJNoArguDepthFirst<PigletBuilder.PigletFragme
         pf.write_label("MAIN");
         this.inc_indent();
         pf.allocate_DTable_mem();
+        /*
         pf.write_label("REALSTART");
         pf.write_indent();
         pf.append(NOOP());
+        */
         pf.write_allocate_local(entry);
         n.f7.accept(this);
         n.f8.accept(this);
@@ -454,7 +469,7 @@ public class PigletBuilder extends GJNoArguDepthFirst<PigletBuilder.PigletFragme
         n.f2.accept(this);
         MethodEntry entry = (MethodEntry)this.cur_entry.table.get(SymbolTableEntry.name2namecode(Type.METHOD, n.f2.f0.tokenImage));
         this.enter_new_scope(entry);
-        pf.write_procedure_head(entry.get_piglet_name(), entry.param_list.size() + 1);  // this ptr should be passed in
+        pf.write_procedure_head(entry.get_piglet_name(), entry.param_list.size() + 2);  // this ptr should be passed in
         pf.write_begin_part();
         /* Allocate Local Temp */
         pf.write_allocate_local(entry);
@@ -579,7 +594,7 @@ public class PigletBuilder extends GJNoArguDepthFirst<PigletBuilder.PigletFragme
         }
         else if(id_type.parent_scope instanceof ClassEntry){
             pf.append(HSTORE(
-                    TEMP(0),
+                    TEMP(1),
                     id_type.table_index + 1,
                     pf_sub1.piglet.toString()
             ));
@@ -620,7 +635,7 @@ public class PigletBuilder extends GJNoArguDepthFirst<PigletBuilder.PigletFragme
         else if(id_type.parent_scope instanceof ClassEntry){
             int arr_temp = this.allocate_temp();
             pf.append(HSTORE(
-                    array_ele_ptr(access_array_ele(TEMP(0), Integer.toString(id_type.table_index)), pf_sub1.piglet.toString()),
+                    array_ele_ptr(access_array_ele(TEMP(1), Integer.toString(id_type.table_index)), pf_sub1.piglet.toString()),
                     0,
                     pf_sub2.piglet.toString()
             ));
@@ -871,7 +886,7 @@ public class PigletBuilder extends GJNoArguDepthFirst<PigletBuilder.PigletFragme
         PigletFragment pf_sub2 = n.f4.accept(this);
         pf.write_end_part(this.CALL(
                 TEMP(d_temp),
-                "(" + pf_sub1.piglet.toString() + " " + pf_sub2.piglet.toString()
+                "(" + TEMP(0) + " " + pf_sub1.piglet.toString() + " " + pf_sub2.piglet.toString()
         ));
         n.f5.accept(this);
         return pf;
@@ -898,7 +913,7 @@ public class PigletBuilder extends GJNoArguDepthFirst<PigletBuilder.PigletFragme
                 pf.append(TEMP(id_type.temp_index));
             }
             else{
-                pf.append(this.access_array_ele(TEMP(0), Integer.toString(id_type.table_index)));
+                pf.append(this.access_array_ele(TEMP(1), Integer.toString(id_type.table_index)));
             }
         }
         else pf = n.f0.accept(this);
@@ -941,7 +956,7 @@ public class PigletBuilder extends GJNoArguDepthFirst<PigletBuilder.PigletFragme
      */
     public PigletFragment visit(ThisExpression n) {
         PigletFragment pf = new PigletFragment();
-        pf.append(TEMP(0));
+        pf.append(TEMP(1));
         n.f0.accept(this);
         return pf;
     }

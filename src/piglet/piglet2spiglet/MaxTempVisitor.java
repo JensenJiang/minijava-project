@@ -7,8 +7,8 @@ import piglet.visitor.DepthFirstVisitor;
  * Created by jensen on 2017/6/2.
  */
 public class MaxTempVisitor extends DepthFirstVisitor{
-    int max_temp;
-    MaxTempVisitor(){
+    public int max_temp;
+    public MaxTempVisitor(){
         this.max_temp = 20;
     }
     /**

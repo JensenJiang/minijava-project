@@ -112,27 +112,33 @@ public class LinearScanner extends DepthFirstVisitor {
         Integer reg_id = this.temp_reg_id.get(temp_id);
         if(reg_id == null) {
             /* search for not-write and unlocked temp register */
-            for(int i : this._avail_temp_regs) {
-                if(!regs[i].is_locked && !regs[i].is_write) {
-                    this.write_back_reg(regs[i], kf);
-                    this._allocate_reg(temp_id, i);
-                    reg_id = i;
-                    break;
-                }
+            if(!this._avail_temp_regs.isEmpty()) {
+                reg_id = this._avail_temp_regs.pollFirst();
+                this._allocate_reg(temp_id, reg_id);
             }
-            if(reg_id == null) {
-                /* search for unlocked temp register */
-                for(int i : this._avail_temp_regs) {
-                    if(!regs[i].is_locked) {
+            else {
+                for(int i : this.tempreg_ids) {
+                    if(!regs[i].is_locked && !regs[i].is_write) {
                         this.write_back_reg(regs[i], kf);
                         this._allocate_reg(temp_id, i);
                         reg_id = i;
                         break;
                     }
                 }
+                if(reg_id == null) {
+                /* search for unlocked temp register */
+                    for(int i : this.tempreg_ids) {
+                        if(!regs[i].is_locked) {
+                            this.write_back_reg(regs[i], kf);
+                            this._allocate_reg(temp_id, i);
+                            reg_id = i;
+                            break;
+                        }
+                    }
+                }
             }
         }
-        assert reg_id != null : "Temp Register Allocation Error!";
+        assert reg_id != null : "Temp Register Allocation Error!" + " " + Integer.toString(temp_id);
         return regs[reg_id];
     }
 

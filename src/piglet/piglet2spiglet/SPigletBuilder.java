@@ -15,7 +15,7 @@ public class SPigletBuilder extends GJNoArguDepthFirst<SPigletBuilder.SPigletFra
     int indent;
     int _SPACES_PER_INDENT;
 
-    SPigletBuilder(int _start_temp) {
+    public SPigletBuilder(int _start_temp) {
         this.global_temp_cnt = _start_temp;
         this.indent = 0;
         this._SPACES_PER_INDENT = 4;
