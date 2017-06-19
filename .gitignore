@@ -1,3 +1,5 @@
 .DS_Store
 out/
 tools/
+.idea/
+Compile Practice.iml
